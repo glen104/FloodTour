@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WPOD - NWS Flood Product Tour</title>
+    
+    <link rel="icon" type="image/png" href="https://avatars.githubusercontent.com/u/60660814?s=280&v=4">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Prevent body scroll */
+        }
+        #map-container {
+            height: 100vh;
+            transition: width 0.3s ease-in-out;
+        }
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+        #sidebar {
+            height: 100vh;
+            overflow-y: auto;
+            transition: transform 0.3s ease-in-out, width 0.3s ease-in-out, min-width 0.3s ease-in-out, padding 0.3s ease-in-out;
+            min-width: 320px; /* Minimum width for sidebar */
+            background-color: #f8fafc; /* slate-50 */
+        }
+        #sidebar.hidden {
+            transform: translateX(-100%);
+            width: 0;
+            min-width: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        #sidebar-toggle {
+            background-color: #1e293b; /* slate-800 */
+            color: white;
+            cursor: pointer;
+            z-index: 1001;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+        }
+        #sidebar-toggle:hover {
+            background-color: #334155; /* slate-700 */
+        }
+        #sidebar::-webkit-scrollbar { width: 8px; }
+        #sidebar::-webkit-scrollbar-track { background: #f1f5f9; }
+        #sidebar::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; }
+        #sidebar::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        
+        .leaflet-popup-content-wrapper { border-radius: 8px; max-width: 500px; }
+        .leaflet-popup-content { margin: 12px; font-size: 13px; line-height: 1.5; max-height: 400px; overflow-y: auto; }
+        
+        .list-item:hover, .click-item:hover { background-color: #e2e8f0; }
+        .list-item.active, .click-item.active { background-color: #dbeafe; border-left-width: 4px; border-left-color: #3b82f6; }
+        
+        .alert-text { white-space: pre-wrap; word-wrap: break-word; font-family: monospace; font-size: 12px; background-color: #f8fafc; padding: 8px; border-radius: 4px; color: #334155; }
+        
+        .sub-map-container {
+            position: absolute;
+            bottom: 20px;
+            left: 10px;
+            width: 250px;
+            height: 200px;
+            z-index: 1000;
+            border: 2px solid #333;
+            border-radius: 8px;
+            background-color: #fff;
+            display: none; /* Hidden by default */
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            flex-direction: column;
+        }
+        .sub-map-header {
+            background-color: #1e293b;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            padding: 4px;
+            font-size: 14px;
+        }
+        .sub-map {
+            width: 100%;
+            height: 100%;
+            flex-grow: 1;
+        }
+        
+        #floating-priority-panel {
+            position: absolute;
+            top: 80px; /* Adjusted for lock button */
+            left: 10px;
+            z-index: 1000;
+            background-color: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(5px);
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            max-width: 350px;
+            max-height: 50vh;
+            overflow-y: auto;
+            display: none; /* Hidden by default */
+        }
+        
+        @keyframes flash-considerable {
+            0%, 100% { fill: #008000; } /* Green */
+            50% { fill: #FFFF00; } /* Yellow */
+        }
+        @keyframes flash-catastrophic {
+            0%, 100% { fill: #008000; } /* Green */
+            50% { fill: #FF00FF; } /* Magenta */
+        }
+        .flashing-considerable {
+            animation: flash-considerable 1.5s linear infinite;
+        }
+        .flashing-catastrophic {
+            animation: flash-catastrophic 1.5s linear infinite;
+        }
+        
+        .leaflet-control-container .leaflet-control.legend {
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 8px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            font-size: 11px;
+            width: calc(100% - 20px);
+            max-width: 1200px;
+        }
+        .legend-section {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-right: 15px;
+            margin-bottom: 5px;
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            margin-right: 5px;
+            border: 1px solid #555;
+        }
+        .legend-subcategory {
+            margin-left: 20px;
+        }
+        
+        .flashing-text-considerable {
+            animation: flash-text-considerable 1.5s linear infinite;
+        }
+        .flashing-text-catastrophic {
+            animation: flash-text-catastrophic 1.5s linear infinite;
+        }
+        @keyframes flash-text-considerable {
+            0%, 100% { color: #008000; } /* Green */
+            50% { color: #BDB76B; } /* DarkKhaki - for readable yellow */
+        }
+        @keyframes flash-text-catastrophic {
+            0%, 100% { color: #006400; }
+            50% { color: #FF00FF; }
+        }
+        
+        .highlight-considerable { background-color: #fef08a; color: #713f12; font-weight: bold; padding: 1px 3px; border-radius: 3px; }
+        .highlight-catastrophic { background-color: #f472b6; color: white; font-weight: bold; padding: 1px 3px; border-radius: 3px; }
+        .popup-header { cursor: move; padding: 8px; }
+
+        #test-panel-toggle {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        #test-panel {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            z-index: 1000;
+            width: 350px;
+            transition: opacity 0.3s, transform 0.3s;
+        }
+        
+        @keyframes flash-header {
+            50% { background-color: #f87171; }
+        }
+        .flashing-header {
+            animation: flash-header 1.5s linear infinite;
+        }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 767px) {
+            #sidebar {
+                position: absolute;
+                z-index: 2000;
+                width: 300px; /* Override Tailwind class for mobile */
+                box-shadow: 4px 0 15px rgba(0,0,0,0.2);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <svg width="0" height="0" style="position:absolute;z-index:-1;">
+        <defs>
+            <pattern id="leftHatch" width="8" height="8" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+                <rect width="8" height="8" fill="rgba(0,0,0,0)"/>
+                <line x1="0" y1="0" x2="0" y2="8" stroke="#000000" stroke-width="2"/>
+            </pattern>
+            <pattern id="crossHatch" width="8" height="8" patternUnits="userSpaceOnUse">
+                <rect width="8" height="8" fill="rgba(0,0,0,0)"/>
+                <path d="M-1,1 l2,-2 M0,8 l8,-8 M7,9 l2,-2" stroke="#000000" stroke-width="1"/>
+                <path d="M-1,7 l2,2 M0,0 l8,8 M7,-1 l2,2" stroke="#000000" stroke-width="1"/>
+            </pattern>
+        </defs>
+    </svg>
+
+    <div class="flex h-screen">
+        <aside id="sidebar" class="w-full md:w-1/3 lg:w-1/4 border-r border-slate-200 flex flex-col">
+            <div class="p-4 border-b border-slate-200">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-xl font-bold text-slate-800">Active Flood Alerts</h1>
+                    </div>
+                <p class="text-sm text-slate-500">Sorted by Impact, State, then End Time.</p>
+            </div>
+            
+            <div id="click-results-section"></div>
+
+            <div class="p-4 border-b border-slate-200">
+                <h2 class="font-semibold text-slate-700 mb-2">Live Alert Filters</h2>
+                <div class="grid grid-cols-2 gap-2">
+                    <label class="flex items-center space-x-2"><input type="checkbox" class="filter-checkbox h-4 w-4 rounded text-red-600" data-category="warnings" checked><span class="text-slate-700">Warnings</span></label>
+                    <label class="flex items-center space-x-2"><input type="checkbox" class="filter-checkbox h-4 w-4 rounded text-orange-600" data-category="watches" checked><span class="text-slate-700">Watches</span></label>
+                    <label class="flex items-center space-x-2"><input type="checkbox" class="filter-checkbox h-4 w-4 rounded text-blue-600" data-category="advisories" checked><span class="text-slate-700">Advisories</span></label>
+                    <label class="flex items-center space-x-2"><input type="checkbox" class="filter-checkbox h-4 w-4 rounded text-green-600" data-category="coastal" checked><span class="text-slate-700">Coastal</span></label>
+                </div>
+            </div>
+
+            <div id="alert-list-container" class="flex-grow overflow-y-auto">
+                <div id="loader" class="p-4 text-center text-slate-500">Loading alerts...</div>
+                <div id="no-alerts" class="p-4 text-center text-slate-500 hidden">No active flood alerts.</div>
+                <div id="priority-section"></div>
+                <div id="warnings-section"></div>
+                <div id="watches-section"></div>
+                <div id="advisories-section"></div>
+                <div id="coastal-section"></div>
+            </div>
+        </aside>
+
+        <div id="sidebar-toggle" class="w-6 h-full hidden md:flex">
+            <span id="toggle-icon">«</span>
+        </div>
+
+        <main id="map-container" class="relative grow">
+            <button id="mobile-sidebar-toggle" class="absolute top-[76px] left-[10px] z-[1001] bg-white p-2 rounded shadow-md hover:bg-gray-100 md:hidden">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+            </button>
+
+            <div id="map"></div>
+            
+            <button id="zoom-lock-toggle" class="absolute top-[76px] right-[10px] z-[1001] bg-white p-2 rounded shadow-md hover:bg-gray-100" title="Lock Map View">
+                <svg xmlns="http://www.w3.org/2000/svg" id="unlock-icon" class="h-5 w-5 text-gray-700" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10 2a5 5 0 00-5 5v2a2 2 0 00-2 2v5a2 2 0 002 2h10a2 2 0 002-2v-5a2 2 0 00-2-2V7a5 5 0 00-5-5zm0 2.5a2.5 2.5 0 012.5 2.5V7H7.5V7a2.5 2.5 0 012.5-2.5z"/>
+                </svg>
+                <svg xmlns="http://www.w3.org/2000/svg" id="lock-icon" class="h-5 w-5 text-red-600 hidden" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
+                </svg>
+            </button>
+            <button id="radar-toggle" class="absolute top-[120px] right-[10px] z-[1001] bg-white p-2 rounded shadow-md hover:bg-gray-100" title="Toggle Radar">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" viewBox="0 0 20 20" fill="currentColor">
+                     <path d="M10 1.1C4.5 1.1 0 3.4 0 6.4c0 1.9 2.1 3.6 5.2 4.8l.2-1.1C3 9.2 1.5 8 1.5 6.4c0-2.3 3.8-4.2 8.5-4.2s8.5 1.9 8.5 4.2c0 1.6-1.5 2.8-4.1 3.7l.3 1.1c3-1.2 5.3-3 5.3-4.8C20 3.4 15.5 1.1 10 1.1z"/>
+                     <path d="M10 6.6c-4.1 0-7.5 1.5-7.5 3.3 0 1.3 1.6 2.4 3.9 3l.3-1.1c-1.8-.5-2.7-1.3-2.7-1.9 0-1.3 3-2.3 6-2.3s6 1 6 2.3c0 .6-.9 1.4-2.7 1.9l.3 1.1c2.3-.6 3.9-1.7 3.9-3C17.5 8.1 14.1 6.6 10 6.6z"/>
+                     <path d="M10 12.1c-2.8 0-5 1-5 1.7s2.2 1.7 5 1.7 5-.8 5-1.7-2.2-1.7-5-1.7z"/>
+                 </svg>
+            </button>
+            
+            <div id="radar-opacity-container" class="absolute top-[164px] right-[10px] z-[1001] bg-white p-2 rounded shadow-md hidden w-[120px]">
+                <label for="radar-opacity-slider" class="block text-xs font-medium text-gray-700 text-center">Radar Opacity</label>
+                <input id="radar-opacity-slider" type="range" min="0" max="100" value="60" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+            </div>
+            
+            <div id="title-banner" class="absolute top-0 left-0 right-0 md:right-[24px] z-[1000] bg-white bg-opacity-80 p-2 text-center font-semibold text-slate-800 text-sm md:text-base">
+                <span class="text-red-600 font-bold">***EXPERIMENTAL***</span>
+                WPOD - NWS Flood Product Tour
+                <span class="text-red-600 font-bold">***EXPERIMENTAL***</span>
+            </div>
+            <div id="floating-priority-panel"></div>
+            <div id="hi-map-container" class="sub-map-container"><div class="sub-map-header">Hawaii</div><div id="hi-map" class="sub-map"></div></div>
+            <div id="gu-map-container" class="sub-map-container"><div class="sub-map-header">Guam</div><div id="gu-map" class="sub-map"></div></div>
+            <div id="as-map-container" class="sub-map-container"><div class="sub-map-header">American Samoa</div><div id="as-map" class="sub-map"></div></div>
+            <div id="vi-map-container" class="sub-map-container"><div class="sub-map-header">US Virgin Islands</div><div id="vi-map" class="sub-map"></div></div>
+            
+            <button id="test-panel-toggle" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-full shadow-lg hover:bg-blue-700 transition-colors">Test</button>
+            <div id="test-panel" class="bg-white p-4 rounded-lg shadow-2xl hidden">
+                 <div class="flex justify-between items-center mb-2">
+                    <h3 class="font-bold text-lg text-slate-800">Test Data Loader</h3>
+                    <button id="close-test-panel" class="text-slate-500 hover:text-slate-800">&times;</button>
+                </div>
+
+                <div class="mb-4">
+                    <label for="test-api-url" class="block text-sm font-medium text-slate-700">Archived API URL</label>
+                    <input type="text" id="test-api-url" class="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:border-sky-500 focus:ring-1 focus:ring-sky-500">
+                </div>
+                
+                <div class="mb-4">
+                    <label for="test-file-input" class="block text-sm font-medium text-slate-700">Or load from local text file</label>
+                    <input type="file" id="test-file-input" class="mt-1 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-violet-50 file:text-violet-700 hover:file:bg-violet-100" accept=".txt,text/plain">
+                </div>
+                
+                <div class="flex justify-between">
+                    <button id="run-test-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-md hover:bg-green-700 transition-colors">Run Test</button>
+                    <button id="return-live-btn" class="bg-gray-500 text-white font-bold py-2 px-4 rounded-md hover:bg-gray-600 transition-colors hidden">Return to Live</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://npmcdn.com/leaflet-pip@1.1.0/leaflet-pip.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+
+    <script>
+        // Global function to handle popup text view toggling
+        function toggleTextView(checkbox) {
+            const popupNode = checkbox.closest('.leaflet-popup-content');
+            if (!popupNode) return;
+            const simplifiedView = popupNode.querySelector('.simplified-view');
+            const fullView = popupNode.querySelector('.full-view');
+
+            if (checkbox.checked) {
+                simplifiedView.style.display = 'none';
+                fullView.style.display = 'block';
+            } else {
+                simplifiedView.style.display = 'block';
+                fullView.style.display = 'none';
+            }
+        }
+        
+        // Global function to open a specific alert's popup from the sidebar
+        function openAlertPopup(alertId) {
+             const layer = window.alertLayers[alertId];
+             if (layer) {
+                 layer.openPopup();
+                 window.highlightListItem(alertId);
+             }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Map Initialization ---
+            const map = L.map('map', { renderer: L.svg(), zoomControl: false }).setView([39.82, -98.58], 4);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
+            L.control.zoom({ position: 'topright' }).addTo(map);
+
+            // Create a pane for the radar layer to control its z-index
+            map.createPane('radarPane');
+            map.getPane('radarPane').style.zIndex = 399; // Below overlays (400) but above tiles (200)
+
+            // --- Global State ---
+            let allAlerts = [];
+            window.alertLayers = {}; // Make it global for openAlertPopup
+            let geoJsonLayerGroup = L.layerGroup().addTo(map);
+            let testPolygonLayerGroup = L.layerGroup().addTo(map);
+            let previousAlertIds = new Set();
+            let isAutoZoomPaused = false;
+            let isZoomLocked = false; // For zoom lock feature
+            let radarLayer = null; // For radar toggle
+            let defaultMapView = null;
+            let nationalZoomTimeout = null;
+            let lastOconusIndex = -1;
+            let subMaps = {};
+            let manualInteractionTimeout = null;
+            let legendControl = null;
+            let liveFetchInterval, nationalZoomInterval, oconusZoomInterval;
+
+            // --- Config ---
+            const NWS_PRODUCT_COLORS = {
+                'Flash Flood Warning': '#DC143C', 'Flash Flood Statement': '#DC143C',
+                'Flood Warning': '#3CB371', // Medium Sea Green
+                'Coastal Flood Warning': '#228B22',
+                'Flash Flood Watch': '#48D1CC', 'Flood Watch': '#48D1CC', 
+                'Coastal Flood Watch': '#20B2AA',
+                'Flood Advisory': '#90EE90', // Light Green
+                'Coastal Flood Advisory': '#7CFC00',
+                'Flood Statement': '#90EE90', 
+                'Coastal Flood Statement': '#6B8E23',
+                'default': '#808080'
+            };
+            const HIGH_IMPACT_GREEN = '#006400';
+            const OCONUS_AREAS = {
+                'AK': L.latLngBounds([[51.2, -179.1], [71.4, -129.9]]),
+                'HI': L.latLngBounds([[18.9, -160.3], [22.2, -154.8]]),
+                'GU': L.latLngBounds([[13.2, 144.6], [13.7, 145.0]]),
+                'AS': L.latLngBounds([[-14.4, -170.8], [-14.1, -170.5]]),
+                'VI': L.latLngBounds([[17.6, -65.1], [18.4, -64.5]])
+            };
+            const REGIONAL_BOUNDS = {
+                'Northeast': L.latLngBounds([[38.8, -80.5], [47.5, -67.0]]),
+                'Southeast': L.latLngBounds([[24.5, -91.5], [38.8, -75.0]]),
+                'SouthCentral': L.latLngBounds([[25.8, -106.6], [37.0, -93.5]]),
+                'NorthCentral': L.latLngBounds([[36.5, -97.0], [49.0, -82.0]]),
+                'NorthernPlains': L.latLngBounds([[42.5, -104.0], [49.0, -96.0]]),
+                'Southwest': L.latLngBounds([[31.0, -124.5], [42.0, -109.0]]),
+                'Northwest': L.latLngBounds([[42.0, -125.0], [49.0, -111.0]])
+            };
+
+
+            // --- Utility Functions ---
+            const getCategoryFromText = (text) => {
+                if (!text) return null;
+                const lowerText = text.toLowerCase();
+                if (!lowerText.includes('flood') && !lowerText.includes('fluvial') && !lowerText.includes('river')) return null;
+                if (lowerText.includes('coastal')) return 'coastal';
+                if (lowerText.includes('warning')) return 'warnings';
+                if (lowerText.includes('watch')) return 'watches';
+                if (lowerText.includes('advisory') || lowerText.includes('statement')) return 'advisories';
+                return null;
+            };
+
+            const getEventNameFromText = (text) => {
+                const eventRegex = /^\s*(Flash Flood Warning|Flash Flood Statement|Flood Warning|Coastal Flood Warning|Flash Flood Watch|Flood Advisory|Coastal Flood Advisory|Flood Statement|Coastal Flood Statement|Flood Watch|Coastal Flood Watch)\s*$/im;
+                const match = text.match(eventRegex);
+                if (match && match[1]) {
+                    return match[1].trim();
+                }
+                
+                const embeddedEventRegex = /\*\s(Flash Flood Warning|Flash Flood Statement|Flood Warning|Coastal Flood Warning|Flash Flood Watch|Flood Advisory|Coastal Flood Advisory|Flood Statement|Coastal Flood Statement|Flood Watch|Coastal Flood Watch)/i;
+                const embeddedMatch = text.match(embeddedEventRegex);
+                if (embeddedMatch && embeddedMatch[1]) {
+                    return embeddedMatch[1].trim();
+                }
+
+                return 'Unknown Product';
+            };
+
+            const parseImpact = (alertProperties) => {
+                let level = 'Base';
+                const description = alertProperties.description || '';
+                const eventName = alertProperties.event || '';
+                
+                const threatParam = alertProperties.parameters?.flashFloodDamageThreat?.[0];
+                if (threatParam) {
+                    level = threatParam;
+                } else {
+                    if (eventName.toLowerCase().includes('flash flood')) {
+                        const damageThreatRegex = /FLASH FLOOD DAMAGE THREAT\.\.\.\s*([A-Z]+)/im;
+                        const damageMatch = description.match(damageThreatRegex);
+                        if (damageMatch && damageMatch[1]) {
+                            const threatLevel = damageMatch[1].trim().toLowerCase();
+                             if (threatLevel === 'catastrophic') {
+                                level = 'Catastrophic';
+                            } else if (threatLevel === 'considerable') {
+                                level = 'Considerable';
+                            }
+                        }
+                    }
+                }
+                
+                if (description.toLowerCase().includes('catastrophic')) {
+                    level = 'Catastrophic';
+                }
+
+                return { level: level };
+            };
+            
+            const parseLatLonPairs = (text) => {
+                const latLonRegex = /LAT\.\.\.LON([\s\S]*?)(?:\$\$|TIME\.\.\.MOT\.\.\.LOC)/i;
+                const match = text.match(latLonRegex);
+                if (!match || !match[1]) return null;
+                const numbers = match[1].match(/\d{4}/g);
+                if (!numbers || numbers.length % 2 !== 0) return null;
+                const coordinates = [];
+                for (let i = 0; i < numbers.length; i += 2) {
+                    const lat = parseFloat(numbers[i].substring(0, 2) + '.' + numbers[i].substring(2));
+                    const lon = -parseFloat(numbers[i + 1].substring(0, 2) + '.' + numbers[i + 1].substring(2));
+                    if (!isNaN(lat) && !isNaN(lon)) coordinates.push([lat, lon]);
+                }
+                if (coordinates.length > 2 && (coordinates[0][0] !== coordinates[coordinates.length - 1][0] || coordinates[0][1] !== coordinates[coordinates.length - 1][1])) {
+                    coordinates.push(coordinates[0]);
+                }
+                return coordinates.length > 2 ? [coordinates] : null;
+            };
+
+            const getLayerStyle = (eventName, impactLevel) => {
+                const category = getCategoryFromText(eventName);
+                const color = NWS_PRODUCT_COLORS[eventName] || NWS_PRODUCT_COLORS['default'];
+                const style = { color: color, weight: 3, opacity: 1, fillColor: color, fillOpacity: 0.4 };
+                const lowerImpact = impactLevel.toLowerCase();
+
+                if (category === 'watches') {
+                    style.weight = 3;
+                    style.fillOpacity = 0;
+                } else if (lowerImpact === 'considerable' || lowerImpact === 'catastrophic') {
+                    if (category === 'warnings') style.fillColor = HIGH_IMPACT_GREEN;
+                    style.fillPattern = (lowerImpact === 'catastrophic') ? 'url(#crossHatch)' : 'url(#leftHatch)';
+                    style.fillOpacity = 0.7;
+                }
+                
+                if (eventName.toLowerCase().includes('flash flood') && lowerImpact === 'considerable') {
+                    style.className = 'flashing-considerable';
+                } else if (eventName.toLowerCase().includes('flash flood') && lowerImpact === 'catastrophic') {
+                    style.className = 'flashing-catastrophic';
+                }
+                
+                return style;
+            };
+
+            const getStateFromAreaDesc = (areaDesc) => {
+                if (!areaDesc) return 'ZZ';
+                const match = areaDesc.match(/,\s*([A-Z]{2})$/);
+                return match ? match[1] : 'ZZ';
+            };
+
+            const generateSimplifiedText = (fullText) => {
+                const hazardBlockRegex = /(?:\*\s)?(HAZARD\.\.\.[\s\S]+?)(?=\n\*\sSome locations|\n\nThis includes|\n\nPRECAUTIONARY|&&)/im;
+                const match = fullText.match(hazardBlockRegex);
+                
+                if (match && match[1]) {
+                    return match[1].trim();
+                }
+                return "Simplified text not available. View full text.";
+            };
+
+            const highlightImpactWords = (text) => {
+                return text
+                    .replace(/CONSIDERABLE/g, '<span class="highlight-considerable">CONSIDERABLE</span>')
+                    .replace(/CATASTROPHIC/g, '<span class="highlight-catastrophic">CATASTROPHIC</span>');
+            };
+
+            // --- UI Rendering ---
+            const renderAlertList = () => {
+                const sections = { priority: '', warnings: '', watches: '', advisories: '', coastal: '' };
+                allAlerts.forEach(alert => {
+                    let impactTag = '';
+                    let highlightClass = '';
+                    const lowerImpact = alert.impact.level.toLowerCase();
+
+                    if (alert.eventName.toLowerCase().includes('flash flood')) {
+                        let tagColor = 'bg-gray-400 text-white';
+                        if (lowerImpact === 'considerable') tagColor = 'bg-yellow-500 text-black';
+                        if (lowerImpact === 'catastrophic') tagColor = 'bg-purple-600 text-white';
+                        impactTag = `<span class="text-xs font-bold uppercase px-2 py-1 rounded-full ${tagColor}">${alert.impact.level.substring(0,4)}</span>`;
+                    }
+                    
+                    const endDate = alert.properties.ends ? new Date(alert.properties.ends).toLocaleString() : 'N/A';
+                    const listItemHTML = `
+                        <div class="flex justify-between items-start">
+                            <div class="flex-grow pr-2">
+                                <p class="font-semibold text-slate-800">${alert.eventName}</p>
+                                <p class="text-sm text-slate-600">${alert.properties.areaDesc}</p>
+                                <p class="text-xs text-slate-500 mt-1">Ends: ${endDate}</p>
+                            </div>
+                            <div class="flex-shrink-0">${impactTag}</div>
+                        </div>`;
+
+                    if (lowerImpact === 'catastrophic') {
+                        highlightClass = 'bg-fuchsia-200';
+                        sections.priority += `<div class="list-item p-3 border-b border-slate-200 cursor-pointer ${highlightClass}" data-alert-id="${alert.id}">${listItemHTML}</div>`;
+                    } else if (lowerImpact === 'considerable') {
+                        highlightClass = 'bg-yellow-200';
+                        sections.priority += `<div class="list-item p-3 border-b border-slate-200 cursor-pointer ${highlightClass}" data-alert-id="${alert.id}">${listItemHTML}</div>`;
+                    } else {
+                        if (sections[alert.category] !== undefined) {
+                           sections[alert.category] += `<div class="list-item p-3 border-b border-slate-200 cursor-pointer" data-alert-id="${alert.id}">${listItemHTML}</div>`;
+                        }
+                    }
+                });
+
+                document.getElementById('priority-section').innerHTML = sections.priority ? `<div class="flex items-center p-2 bg-slate-200" title="To access all features, un-collapse the warning list using the >> button."><h3 class="font-bold text-slate-800">High Impact Alerts</h3><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-slate-500" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg></div>${sections.priority}` : '';
+                document.getElementById('warnings-section').innerHTML = sections.warnings ? `<div class="flex items-center p-2 bg-red-100" title="Single-click a warning to view its text. Double-click to zoom in."><h3 class="font-bold text-red-800">Warnings</h3><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-red-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg></div>${sections.warnings}` : '';
+                document.getElementById('watches-section').innerHTML = sections.watches ? `<div class="flex items-center p-2 bg-orange-100" title="Double-clicking a watch will open the issuing forecast office's homepage in a new tab. Watches are not displayed on the map."><h3 class="font-bold text-orange-800">Watches</h3><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-orange-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg></div>${sections.watches}` : '';
+                document.getElementById('advisories-section').innerHTML = sections.advisories ? `<div class="flex items-center p-2 bg-cyan-100" title="Single-click an advisory to view its text. Double-click to zoom in."><h3 class="font-bold text-cyan-800">Advisories</h3><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-2 text-cyan-600" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" /></svg></div>${sections.advisories}` : '';
+                document.getElementById('coastal-section').innerHTML = sections.coastal ? `<h3 class="font-bold p-2 bg-green-100 text-green-800">Coastal</h3>${sections.coastal}` : '';
+                
+                syncFloatingPanel();
+            };
+
+            const renderMap = () => {
+                geoJsonLayerGroup.clearLayers();
+                window.alertLayers = {};
+                const filters = getActiveFilters();
+                allAlerts.forEach(alert => {
+                    if (!filters.includes(alert.category) || alert.category === 'watches' || !alert.geometry) return;
+                    
+                    const style = getLayerStyle(alert.eventName, alert.impact.level);
+                    const layer = L.geoJSON(alert.geometry, { style: style });
+                    
+                    const props = alert.properties;
+                    const fullText = alert.properties.description;
+                    const simplifiedText = generateSimplifiedText(fullText);
+                    const highlightedFullText = highlightImpactWords(fullText);
+                    const highlightedSimplifiedText = highlightImpactWords(simplifiedText);
+                    const lowerImpact = alert.impact.level.toLowerCase();
+
+                    let eventTitle;
+                    if (lowerImpact === 'considerable') {
+                        eventTitle = `<div class="font-bold text-lg flashing-text-considerable">${props.event} - ${alert.impact.level}</div>`;
+                    } else if (lowerImpact === 'catastrophic') {
+                        eventTitle = `<div class="font-bold text-lg flashing-text-catastrophic">${props.event} - ${alert.impact.level}</div>`;
+                    } else {
+                        eventTitle = `<div class="font-bold text-lg" style="color:${style.color}">${props.event}</div>`;
+                    }
+
+                    const popupContent = `
+                        <div class="popup-header">
+                            ${eventTitle}
+                            <div class="font-semibold">${props.headline}</div>
+                        </div>
+                        <div class="text-xs my-1 text-slate-600">
+                            <label class="inline-flex items-center cursor-pointer">
+                                <span class="mr-2 font-medium">Simplified</span>
+                                <input type="checkbox" class="sr-only peer" onchange="toggleTextView(this)">
+                                <div class="relative w-9 h-5 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                                <span class="ml-2 font-medium">Full Text</span>
+                            </label>
+                        </div>
+                        <hr class="my-2">
+                        <div class="alert-text simplified-view">${highlightedSimplifiedText}</div>
+                        <div class="alert-text full-view" style="display: none;">${highlightedFullText}</div>
+                    `;
+                    layer.bindPopup(popupContent, { draggable: true });
+                    window.alertLayers[alert.id] = layer;
+                    geoJsonLayerGroup.addLayer(layer);
+                });
+            };
+
+            // --- Event Handling & UI ---
+            const getActiveFilters = () => Array.from(document.querySelectorAll('.filter-checkbox:checked')).map(cb => cb.dataset.category);
+            document.querySelectorAll('.filter-checkbox').forEach(checkbox => checkbox.addEventListener('change', renderMap));
+            
+            window.highlightListItem = (alertId) => { // Make it global
+                document.querySelectorAll('.list-item, .click-item').forEach(item => {
+                    item.classList.remove('active');
+                    if (item.dataset.alertId === alertId) {
+                        item.classList.add('active');
+                        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                });
+            };
+            
+            const sidebar = document.getElementById('sidebar');
+            
+            sidebar.addEventListener('click', (e) => {
+                const targetItem = e.target.closest('.list-item') || e.target.closest('.click-item');
+                if (targetItem) {
+                    const alertId = targetItem.dataset.alertId;
+                    openAlertPopup(alertId);
+                }
+            });
+
+            sidebar.addEventListener('dblclick', (e) => {
+                const targetItem = e.target.closest('.list-item') || e.target.closest('.click-item');
+                if (targetItem) {
+                    const alertId = targetItem.dataset.alertId;
+                    const alert = allAlerts.find(a => a.id === alertId);
+                    if (alert) {
+                        if (alert.category === 'watches') {
+                            const vtec = alert.properties.parameters?.VTEC?.[0];
+                            if (vtec) {
+                                const wfoMatch = vtec.match(/\.K([A-Z]{3})\./);
+                                if (wfoMatch && wfoMatch[1]) {
+                                    window.open(`https://www.weather.gov/${wfoMatch[1].toLowerCase()}`, '_blank');
+                                }
+                            }
+                        } else {
+                            zoomToAlert(alert);
+                        }
+                    }
+                }
+            });
+
+            const zoomToAlert = (alert) => {
+                if (isZoomLocked) return; // Check for zoom lock
+                if (!alert.geometry) return;
+                
+                isAutoZoomPaused = true;
+                if (manualInteractionTimeout) clearTimeout(manualInteractionTimeout);
+
+                const layer = window.alertLayers[alert.id];
+                if (layer) {
+                    const bounds = layer.getBounds();
+                    if(bounds.isValid()){
+                        map.fitBounds(bounds.pad(0.5)); // Add 50% padding
+                    }
+                }
+
+                manualInteractionTimeout = setTimeout(() => {
+                    isAutoZoomPaused = false;
+                    if (defaultMapView && !isZoomLocked) { // Check for zoom lock
+                        map.fitBounds(defaultMapView, { padding: [50, 50] });
+                    }
+                }, 20000); // 20 seconds
+            };
+
+            map.on('click', (e) => {
+                const clickedAlerts = leafletPip.pointInLayer(e.latlng, geoJsonLayerGroup, true);
+                const clickResultsSection = document.getElementById('click-results-section');
+                
+                if (clickedAlerts.length === 0) {
+                    clickResultsSection.innerHTML = '';
+                    return;
+                }
+
+                if (clickedAlerts.length === 1) {
+                    const alertId = Object.keys(window.alertLayers).find(id => window.alertLayers[id] === clickedAlerts[0]);
+                    if (alertId) openAlertPopup(alertId);
+                    clickResultsSection.innerHTML = '';
+                    return;
+                }
+
+                let resultsHTML = '<div class="p-4 border-b border-slate-200"><h3 class="font-bold text-slate-800 mb-2">Multiple Alerts Clicked:</h3>';
+                clickedAlerts.forEach(layer => {
+                    const alertId = Object.keys(window.alertLayers).find(id => window.alertLayers[id] === layer);
+                    if (alertId) {
+                        const alert = allAlerts.find(a => a.id === alertId);
+                        if (alert) {
+                           resultsHTML += `<div class="click-item p-2 border-b border-slate-200 cursor-pointer hover:bg-slate-100" data-alert-id="${alert.id}">
+                                <p class="font-semibold text-sm">${alert.eventName}</p>
+                                <p class="text-xs text-slate-600">${alert.properties.areaDesc}</p>
+                            </div>`;
+                        }
+                    }
+                });
+                resultsHTML += '</div>';
+                clickResultsSection.innerHTML = resultsHTML;
+            });
+
+            map.on('popupopen', function (e) {
+                var popup = e.popup;
+                var popupEl = popup.getElement();
+                var handle = popupEl.querySelector('.popup-header');
+                if (handle) {
+                    var draggable = new L.Draggable(popupEl, handle);
+                    draggable.enable();
+                }
+            });
+
+
+            const desktopToggleButton = document.getElementById('sidebar-toggle');
+            const mobileToggleButton = document.getElementById('mobile-sidebar-toggle');
+            const toggleIcon = document.getElementById('toggle-icon');
+            const floatingPanel = document.getElementById('floating-priority-panel');
+
+            function syncFloatingPanel() {
+                const prioritySection = document.getElementById('priority-section');
+                if (sidebar.classList.contains('hidden') && prioritySection.innerHTML.includes('list-item')) {
+                    floatingPanel.innerHTML = prioritySection.innerHTML;
+                    floatingPanel.style.display = 'block';
+                } else {
+                    floatingPanel.style.display = 'none';
+                }
+            }
+
+            function handleSidebarToggle() {
+                sidebar.classList.toggle('hidden');
+                const isHidden = sidebar.classList.contains('hidden');
+                
+                if (toggleIcon) {
+                    toggleIcon.textContent = isHidden ? '»' : '«';
+                }
+
+                syncFloatingPanel();
+                
+                // Only invalidate map size if on desktop, where the map resizes
+                if (window.innerWidth >= 768) {
+                    setTimeout(() => {
+                        map.invalidateSize();
+                    }, 310); // Match transition duration
+                }
+            }
+
+            // Attach listeners to both desktop and mobile toggles
+            desktopToggleButton.addEventListener('click', handleSidebarToggle);
+            mobileToggleButton.addEventListener('click', handleSidebarToggle);
+            
+            // Hide sidebar by default on mobile load
+            if (window.innerWidth < 768) {
+                sidebar.classList.add('hidden');
+            }
+
+
+            // --- Test Panel Logic ---
+            const testPanelToggle = document.getElementById('test-panel-toggle');
+            const testPanel = document.getElementById('test-panel');
+            const closeTestPanel = document.getElementById('close-test-panel');
+            const runTestBtn = document.getElementById('run-test-btn');
+            const returnLiveBtn = document.getElementById('return-live-btn');
+            const testApiUrlInput = document.getElementById('test-api-url');
+            const testFileInput = document.getElementById('test-file-input');
+
+            testPanelToggle.addEventListener('click', () => testPanel.classList.toggle('hidden'));
+            closeTestPanel.addEventListener('click', () => testPanel.classList.add('hidden'));
+
+            runTestBtn.addEventListener('click', () => {
+                const apiUrl = testApiUrlInput.value.trim();
+                const file = testFileInput.files[0];
+
+                if (apiUrl) {
+                    fetchAlerts(apiUrl);
+                    returnLiveBtn.classList.remove('hidden');
+                    testPanel.classList.add('hidden');
+                } else if (file) {
+                     const reader = new FileReader();
+                     reader.onload = (e) => {
+                         const text = e.target.result;
+                         testPolygonLayerGroup.clearLayers();
+                         const eventName = getEventNameFromText(text);
+                         const { level } = parseImpact({ description: text, event: eventName });
+                         const polygonCoords = parseLatLonPairs(text);
+                         if (polygonCoords) {
+                             const testStyle = getLayerStyle(eventName, level);
+                             testStyle.color = '#0000FF';
+                             testStyle.weight = 3;
+                             testStyle.dashArray = '5, 5';
+                             const testPolygon = L.polygon(polygonCoords, testStyle);
+                             testPolygonLayerGroup.addLayer(testPolygon);
+                             map.fitBounds(testPolygon.getBounds(), { padding: [50, 50] });
+                         }
+                    };
+                     reader.readAsText(file);
+                     returnLiveBtn.classList.remove('hidden');
+                     testPanel.classList.add('hidden');
+                }
+            });
+
+            returnLiveBtn.addEventListener('click', () => {
+                fetchAlerts(); // Fetch live data
+                returnLiveBtn.classList.add('hidden');
+            });
+            
+            const parseZoneString = (text) => {
+                const zoneLineMatch = text.match(/([A-Z]{2}[ZC]\d{3}.*?)\n/);
+                if (!zoneLineMatch) return null;
+
+                let zoneString = zoneLineMatch[1].trim();
+                const parts = zoneString.split('-');
+                const zones = [];
+                let currentPrefix = "";
+
+                parts.forEach(part => {
+                    if (!part) return;
+                    const prefixMatch = part.match(/([A-Z]{2}[ZC])/);
+                    if (prefixMatch) {
+                        currentPrefix = prefixMatch[1];
+                    }
+
+                    const rangeMatch = part.match(/(\d{3})>(\d{3})/);
+                    if (rangeMatch) {
+                        const start = parseInt(rangeMatch[1], 10);
+                        const end = parseInt(rangeMatch[2], 10);
+                        for (let i = start; i <= end; i++) {
+                            zones.push(currentPrefix + i.toString().padStart(3, '0'));
+                        }
+                    } else {
+                        const singleCodes = part.match(/\d{3}/g);
+                        if (singleCodes) {
+                            singleCodes.forEach(code => {
+                                zones.push(currentPrefix + code);
+                            });
+                        }
+                    }
+                });
+                return zones;
+            };
+
+            // --- Data Fetching & Timers ---
+            const fetchZoneGeometries = async (zoneCodes) => {
+                if (zoneCodes.length === 0) return {};
+                const zoneQuery = zoneCodes.map(code => `'${code}'`).join(',');
+                const url = `https://mapservices.weather.noaa.gov/static/rest/services/nws_reference_maps/nws_reference_map/MapServer/4/query?where=ZONE+IN+(${zoneQuery})&outFields=ZONE&f=geojson`;
+                
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error(`Zone geometry fetch failed: ${response.statusText}`);
+                    const data = await response.json();
+                    const zoneGeoMap = {};
+                    if (data && data.features && Array.isArray(data.features)) {
+                        data.features.forEach(feature => {
+                            zoneGeoMap[feature.properties.ZONE] = feature.geometry;
+                        });
+                    }
+                    return zoneGeoMap;
+                } catch (error) {
+                    console.error("Could not fetch zone geometries:", error);
+                    return {};
+                }
+            };
+            
+            async function fetchFullWarningText(alert) {
+                const apiRawUrl = alert.id + '/raw'; 
+
+                try {
+                    const response = await fetch(apiRawUrl);
+                    if (response.status === 404) {
+                         console.warn(`No raw text available for alert ${alert.id} (404). Using API description.`);
+                         return alert.properties.description;
+                    }
+                    if (!response.ok) {
+                        throw new Error(`NWS API /raw request failed: ${response.status}`);
+                    }
+                    const text = await response.text();
+                    return text || alert.properties.description;
+                } catch (error) {
+                    console.error(`Could not fetch raw text for ${alert.id}: ${error.message}. Using API description as a fallback.`);
+                    return alert.properties.description;
+                }
+            }
+
+            const fetchAlerts = async (apiUrl = 'https://api.weather.gov/alerts/active') => {
+                try {
+                    const response = await fetch(apiUrl);
+                    if (!response.ok) throw new Error('API request failed');
+                    const data = await response.json();
+                    
+                    const currentAlertIds = new Set();
+                    let rawAlerts = data.features
+                        .filter(feature => feature.properties.messageType !== 'Cancel')
+                        .map(feature => {
+                            const eventName = feature.properties.event;
+                            const category = getCategoryFromText(eventName);
+                            if (!category) return null;
+
+                            currentAlertIds.add(feature.id);
+                            return { id: feature.id, properties: feature.properties, eventName: eventName, geometry: feature.geometry, category: category, impact: { level: 'Base' }, state: getStateFromAreaDesc(feature.properties.areaDesc) };
+                        }).filter(Boolean);
+                    
+                    const textFetchPromises = rawAlerts.map(alert => {
+                        if (alert.category === 'warnings' && !alert.properties.parameters?.flashFloodDamageThreat?.[0]) {
+                           return fetchFullWarningText(alert);
+                        }
+                        return Promise.resolve(alert.properties.description);
+                    });
+                    const fullTextResults = await Promise.all(textFetchPromises);
+                    
+                    rawAlerts.forEach((alert, index) => {
+                        alert.properties.description = fullTextResults[index];
+                    });
+
+                    rawAlerts.forEach(alert => {
+                        const { level } = parseImpact(alert.properties);
+                        alert.impact = { level: level };
+                    });
+
+                    const alertsWithoutGeo = rawAlerts.filter(a => !a.geometry);
+                    if (alertsWithoutGeo.length > 0) {
+                        const zoneGeoMap = await fetchZoneGeometries(alertsWithoutGeo.flatMap(a => a.properties.geocode.UGC || []));
+                        alertsWithoutGeo.forEach(alert => {
+                            const zones = alert.properties.geocode.UGC || [];
+                            const geometries = zones.map(zone => zoneGeoMap[zone]).filter(Boolean);
+                            if (geometries.length > 0) {
+                                alert.geometry = {
+                                    type: 'GeometryCollection',
+                                    geometries: geometries
+                                };
+                            }
+                        });
+                    }
+
+                    allAlerts = rawAlerts;
+                    processNewAlerts(allAlerts, previousAlertIds);
+                    previousAlertIds = currentAlertIds;
+
+                    allAlerts.sort((a, b) => {
+                        const isHighImpactA = a.impact.level.toLowerCase() === 'catastrophic' || a.impact.level.toLowerCase() === 'considerable';
+                        const isHighImpactB = b.impact.level.toLowerCase() === 'catastrophic' || b.impact.level.toLowerCase() === 'considerable';
+                        if (isHighImpactA !== isHighImpactB) return isHighImpactA ? -1 : 1;
+                        if (isHighImpactA && isHighImpactB) {
+                            const impactOrder = { 'catastrophic': 2, 'considerable': 1 };
+                            const impactScoreA = impactOrder[a.impact.level.toLowerCase()] || 0;
+                            const impactScoreB = impactOrder[b.impact.level.toLowerCase()] || 0;
+                            if (impactScoreA !== impactScoreB) return impactScoreB - impactScoreA;
+                        }
+                        const categoryOrder = { 'warnings': 4, 'watches': 3, 'advisories': 2, 'coastal': 1 };
+                        const categoryScoreA = categoryOrder[a.category] || 0;
+                        const categoryScoreB = categoryOrder[b.category] || 0;
+                        if (categoryScoreA !== categoryScoreB) return categoryScoreB - categoryScoreA;
+                        if (a.category === 'warnings' && b.category === 'warnings') {
+                            const isFfwA = a.eventName.includes('Flash Flood Warning');
+                            const isFfwB = b.eventName.includes('Flash Flood Warning');
+                            if (isFfwA !== isFfwB) return isFfwA ? -1 : 1;
+                        }
+                        if (a.state < b.state) return -1;
+                        if (a.state > b.state) return 1;
+                        const a_ends = a.properties.ends ? new Date(a.properties.ends) : null;
+                        const b_ends = b.properties.ends ? new Date(b.properties.ends) : null;
+                        if (!a_ends) return 1; if (!b_ends) return -1;
+                        return a_ends - b_ends;
+                    });
+                    
+                    document.getElementById('loader').classList.add('hidden');
+                    if (allAlerts.length === 0) {
+                        document.getElementById('no-alerts').classList.remove('hidden');
+                    } else {
+                        document.getElementById('no-alerts').classList.add('hidden');
+                        renderAlertList();
+                        renderMap();
+                        calculateAndSetDefaultView();
+                        updateLegend();
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch alerts:", error);
+                    document.getElementById('loader').textContent = 'Error fetching alerts.';
+                }
+            };
+            
+            const calculateAndSetDefaultView = () => {
+                let alertsForZoom = allAlerts.filter(a =>
+                    a.eventName.includes('Flash Flood Warning') && a.geometry && !OCONUS_AREAS[a.state]
+                );
+
+                if (alertsForZoom.length === 0) {
+                    alertsForZoom = allAlerts.filter(a =>
+                        a.category === 'warnings' && a.geometry && !OCONUS_AREAS[a.state]
+                    );
+                }
+
+                if (alertsForZoom.length === 0) {
+                    defaultMapView = L.latLngBounds([[24.396308, -125.000000], [49.384358, -66.934570]]);
+                } else {
+                    const bounds = L.latLngBounds();
+                    alertsForZoom.forEach(w => {
+                        const layer = L.geoJSON(w.geometry);
+                        bounds.extend(layer.getBounds());
+                    });
+                    defaultMapView = bounds;
+                }
+
+                if (!isAutoZoomPaused && !isZoomLocked) {
+                    map.fitBounds(defaultMapView, { padding: [50, 50] });
+                }
+            };
+
+            const processNewAlerts = (newAlerts, oldIds) => {
+                const synth = new Tone.Synth().toDestination();
+                const now = new Date();
+
+                newAlerts.forEach(alert => {
+                    if (!oldIds.has(alert.id)) {
+                        const lowerImpact = alert.impact.level.toLowerCase();
+                        const isHighImpactFFW = (alert.eventName.toLowerCase().includes('flash flood warning') || alert.eventName.toLowerCase().includes('flash flood statement')) &&
+                                                (lowerImpact === 'considerable' || lowerImpact === 'catastrophic');
+
+                        if (isHighImpactFFW) {
+                            const vtecString = alert.properties.parameters?.VTEC?.[0] || "";
+                            const issuanceTime = new Date(alert.properties.sent);
+                            const timeDiff = now - issuanceTime;
+                            const isNewOrUpgrade = vtecString.includes('/O.NEW/') || vtecString.includes('/O.UPG/');
+                            const isRecent = timeDiff < 180000;
+
+                            if (isNewOrUpgrade && isRecent) {
+                                if (lowerImpact === 'considerable') {
+                                    triggerAlertZoom(alert, 1, synth);
+                                } else if (lowerImpact === 'catastrophic') {
+                                    triggerAlertZoom(alert, 3, synth);
+                                }
+                            }
+                        }
+                    }
+                });
+            };
+
+            const triggerAlertZoom = (alert, beepCount, synth) => {
+                if (isZoomLocked) return; // Check for zoom lock
+                if (!alert.geometry) return;
+                isAutoZoomPaused = true;
+
+                const now = Tone.now();
+                for (let i = 0; i < beepCount; i++) {
+                    synth.triggerAttackRelease("C5", "8n", now + i * 0.3);
+                }
+
+                const alertLayer = L.geoJSON(alert.geometry);
+                const alertBounds = alertLayer.getBounds();
+                const center = alertBounds.getCenter();
+                
+                const latOffset = 10 / 69; 
+                const lngOffset = 10 / (Math.cos(center.lat * Math.PI / 180) * 69);
+                
+                const zoomBounds = L.latLngBounds([
+                    [center.lat - latOffset, center.lng - lngOffset],
+                    [center.lat + latOffset, center.lng + lngOffset]
+                ]);
+                
+                map.fitBounds(zoomBounds);
+
+                setTimeout(() => {
+                    isAutoZoomPaused = false;
+                    if (defaultMapView && !isZoomLocked) { // Check for zoom lock
+                        map.fitBounds(defaultMapView, { padding: [50, 50] });
+                    }
+                }, 30000);
+            };
+
+            const triggerNationalZoom = () => {
+                if (isAutoZoomPaused || isZoomLocked) return; // Check for zoom lock
+                const nationalBounds = L.latLngBounds([[24.396308, -125.000000], [49.384358, -66.934570]]);
+                map.fitBounds(nationalBounds);
+
+                nationalZoomTimeout = setTimeout(() => {
+                    nationalZoomTimeout = null;
+                    if (!isAutoZoomPaused && defaultMapView && !isZoomLocked) { // Check for zoom lock
+                       map.fitBounds(defaultMapView);
+                    }
+                }, 45000);
+            };
+
+            const triggerOconusZoom = () => {
+                if (isAutoZoomPaused || nationalZoomTimeout || isZoomLocked) return; // Check for zoom lock
+
+                const oconusAlerts = allAlerts.filter(a => 
+                    (a.category === 'warnings' || a.category === 'watches') && OCONUS_AREAS[a.state]
+                );
+                if (oconusAlerts.length === 0) return;
+
+                lastOconusIndex = (lastOconusIndex + 1) % oconusAlerts.length;
+                const alertToView = oconusAlerts[lastOconusIndex];
+                const state = alertToView.state;
+
+                isAutoZoomPaused = true;
+                const previousView = map.getBounds();
+
+                if (state === 'AK') {
+                    map.fitBounds(OCONUS_AREAS.AK);
+                    setTimeout(() => {
+                        isAutoZoomPaused = false;
+                        map.fitBounds(previousView);
+                    }, 30000);
+                } else {
+                    const mapId = state.toLowerCase() + '-map';
+                    const containerId = mapId + '-container';
+                    const container = document.getElementById(containerId);
+                    
+                    if (!subMaps[state]) {
+                        subMaps[state] = {};
+                        subMaps[state].map = L.map(mapId, { zoomControl: false, attributionControl: false, renderer: L.svg() });
+                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(subMaps[state].map);
+                        subMaps[state].layerGroup = L.layerGroup().addTo(subMaps[state].map);
+                    }
+
+                    subMaps[state].layerGroup.clearLayers();
+                    const stateAlerts = allAlerts.filter(a => a.state === state);
+                    const bounds = L.latLngBounds();
+
+                    stateAlerts.forEach(alert => {
+                        if (alert.geometry) {
+                            const style = getLayerStyle(alert.eventName, alert.impact.level);
+                            const layer = L.geoJSON(alert.geometry, { style: style });
+                            subMaps[state].layerGroup.addLayer(layer);
+                            bounds.extend(layer.getBounds());
+                        }
+                    });
+                    
+                    container.style.display = 'flex';
+                    subMaps[state].map.invalidateSize();
+                    subMaps[state].map.fitBounds(bounds.isValid() ? bounds : OCONUS_AREAS[state]);
+
+                    setTimeout(() => {
+                        container.style.display = 'none';
+                        isAutoZoomPaused = false;
+                    }, 30000);
+                }
+            };
+            
+            map.on('dragstart zoomstart', () => {
+                if (manualInteractionTimeout) clearTimeout(manualInteractionTimeout);
+                isAutoZoomPaused = true;
+                manualInteractionTimeout = setTimeout(() => {
+                    isAutoZoomPaused = false;
+                }, 300000); // 5 minutes
+            });
+            
+            function updateLegend() {
+                if (legendControl) {
+                    map.removeControl(legendControl);
+                }
+                legendControl = L.control({position: 'bottomleft'});
+                legendControl.onAdd = function (map) {
+                    const div = L.DomUtil.create('div', 'info legend');
+                    let content = '<div class="legend-section">';
+                    
+                    const activeProducts = {};
+                    allAlerts.forEach(alert => {
+                        if (alert.eventName.includes('Flash Flood Warning') || alert.eventName.includes('Flash Flood Statement')) {
+                            activeProducts['Flash Flood Warning'] = NWS_PRODUCT_COLORS['Flash Flood Warning'];
+                        } else if (alert.eventName.includes('Flood Warning') || alert.eventName.includes('Flood Statement')) {
+                            activeProducts['Flood Warning'] = NWS_PRODUCT_COLORS['Flood Warning'];
+                        } else if (alert.eventName.includes('Flood Watch') || alert.eventName.includes('Flash Flood Watch')) {
+                            // Exclude watches from the legend
+                        } else if (alert.eventName.includes('Coastal Flood Warning') || alert.eventName.includes('Coastal Flood Statement')) {
+                            activeProducts['Coastal Flood Warning'] = NWS_PRODUCT_COLORS['Coastal Flood Warning'];
+                        } else if (NWS_PRODUCT_COLORS[alert.eventName]){
+                            activeProducts[alert.eventName] = NWS_PRODUCT_COLORS[alert.eventName];
+                        }
+                    });
+
+                    for (const key in activeProducts) {
+                        let style = key.includes('Watch') ? `border: 3px solid ${activeProducts[key]}; background: none;` : `background:${activeProducts[key]};`;
+                        content += `<div class="legend-item"><i style="${style}"></i> ${key}</div>`;
+                    }
+                    
+                    const hasHighImpact = allAlerts.some(a => a.eventName.includes('Flash Flood') && (a.impact.level.toLowerCase() === 'considerable' || a.impact.level.toLowerCase() === 'catastrophic'));
+                    if (hasHighImpact) {
+                        content += `</div><div class="legend-section"><div class="legend-item"><i style="background:${NWS_PRODUCT_COLORS['Flash Flood Warning']}"></i> Flash Flood Warning:</div>`;
+                        content += `<div class="legend-item legend-subcategory"><i style="background: url(#leftHatch) ${HIGH_IMPACT_GREEN};"></i> <span class="flashing-text-considerable"><b>Considerable</b></span></div>`;
+                        content += `<div class="legend-item legend-subcategory"><i style="background: url(#crossHatch) ${HIGH_IMPACT_GREEN};"></i> <span class="flashing-text-catastrophic"><b>Catastrophic</b></span></div>`;
+                    }
+
+                    content += '</div>';
+                    div.innerHTML = content;
+                    return div;
+                };
+                legendControl.addTo(map);
+            }
+
+            // --- Listeners for New Buttons ---
+            const zoomLockToggle = document.getElementById('zoom-lock-toggle');
+            const lockIcon = document.getElementById('lock-icon');
+            const unlockIcon = document.getElementById('unlock-icon');
+            const radarToggle = document.getElementById('radar-toggle');
+            const radarOpacityContainer = document.getElementById('radar-opacity-container');
+            const radarOpacitySlider = document.getElementById('radar-opacity-slider');
+
+            zoomLockToggle.addEventListener('click', () => {
+                isZoomLocked = !isZoomLocked;
+                if (isZoomLocked) {
+                    lockIcon.classList.remove('hidden');
+                    unlockIcon.classList.add('hidden');
+                    zoomLockToggle.title = 'Unlock Map View';
+                    zoomLockToggle.classList.add('bg-red-100');
+                } else {
+                    lockIcon.classList.add('hidden');
+                    unlockIcon.classList.remove('hidden');
+                    zoomLockToggle.title = 'Lock Map View';
+                    zoomLockToggle.classList.remove('bg-red-100');
+                    isAutoZoomPaused = false;
+                }
+            });
+
+            radarToggle.addEventListener('click', () => {
+                if (radarLayer) {
+                    map.removeLayer(radarLayer);
+                    radarLayer = null;
+                    radarToggle.classList.remove('bg-blue-200');
+                    radarOpacityContainer.classList.add('hidden'); // Hide slider
+                } else {
+                    const initialOpacity = radarOpacitySlider.value / 100;
+                    radarLayer = L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi', {
+                        layers: 'nexrad-n0q-900913',
+                        format: 'image/png',
+                        transparent: true,
+                        attribution: 'NEXRAD via IEM',
+                        pane: 'radarPane',
+                        opacity: initialOpacity
+                    });
+                    radarLayer.addTo(map);
+                    radarToggle.classList.add('bg-blue-200');
+                    radarOpacityContainer.classList.remove('hidden'); // Show slider
+                }
+            });
+
+            // **NEW** Event listener for the radar opacity slider
+            radarOpacitySlider.addEventListener('input', () => {
+                if (radarLayer) {
+                    const newOpacity = radarOpacitySlider.value / 100;
+                    radarLayer.setOpacity(newOpacity);
+                }
+            });
+
+            // --- Initial Load & Timers ---
+            fetchAlerts();
+            liveFetchInterval = setInterval(fetchAlerts, 120000); // 2 minutes
+            nationalZoomInterval = setInterval(triggerNationalZoom, 600000); // 10 minutes
+            oconusZoomInterval = setInterval(triggerOconusZoom, 180000); // 3 minutes
+        });
+    </script>
+</body>
+</html>
