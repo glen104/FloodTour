@@ -365,7 +365,8 @@
             // --- Map Initialization ---
             const map = L.map('map', { renderer: L.svg(), zoomControl: false }).setView([39.82, -98.58], 4);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
-            L.control.zoom({ position: 'topright' }).addTo(map);
+            
+            // **REMOVED** The L.control.zoom line was removed from here.
 
             // Create a pane for the radar layer to control its z-index
             map.createPane('radarPane');
@@ -753,7 +754,7 @@
 
             const desktopToggleButton = document.getElementById('sidebar-toggle');
             const mobileToggleButton = document.getElementById('mobile-sidebar-toggle');
-            const sidebarCloseButton = document.getElementById('sidebar-close-button'); // **NEW** Get close button
+            const sidebarCloseButton = document.getElementById('sidebar-close-button');
             const toggleIcon = document.getElementById('toggle-icon');
             const floatingPanel = document.getElementById('floating-priority-panel');
 
@@ -788,7 +789,7 @@
             // Attach listeners to all three buttons
             desktopToggleButton.addEventListener('click', handleSidebarToggle);
             mobileToggleButton.addEventListener('click', handleSidebarToggle);
-            sidebarCloseButton.addEventListener('click', handleSidebarToggle); // **NEW** Add listener to close button
+            sidebarCloseButton.addEventListener('click', handleSidebarToggle);
             
             // Hide sidebar by default on mobile load
             if (window.innerWidth < 768) {
